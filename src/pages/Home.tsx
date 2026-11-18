@@ -348,7 +348,7 @@ function BackupDialog({ open, onClose, flash }: { open: boolean; onClose: () => 
   return (
     <Modal open={open} onClose={onClose} title="备份 / 还原">
       <p className="text-sm text-mute">
-        {cloud.email
+        {cloud.active
           ? '资料已同步到云端。导出备份可以当作额外保险；导入后也会同步到云端（同一笔会被覆盖，其他保留）。'
           : '资料只存在这台设备的浏览器里。换设备或清浏览器前，先导出备份文件；在另一台设备“导入”就能带过去（同一笔会被覆盖，其他保留）。'}
       </p>

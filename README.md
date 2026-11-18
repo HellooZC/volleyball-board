@@ -7,7 +7,7 @@
 ## 资料存在哪里
 
 - 默认存在每台设备的浏览器（localStorage）里。
-- 设定 Firebase 后，登录的教练共用同一份云端资料，离线时会先存在设备上。设定步骤见 [docs/firebase-setup.md](docs/firebase-setup.md)。
+- 设定 Firebase 后，所有打开网站的设备自动同步同一份云端资料（不用登录），离线时会先存在设备上。设定步骤见 [docs/firebase-setup.md](docs/firebase-setup.md)。
 
 ## 开发
 
@@ -18,7 +18,7 @@ npm run build    # 输出到 dist/
 npm run lint
 ```
 
-技术：React 19 + TypeScript + Tailwind CSS 4 + Vite，可选 Firebase（Auth + Firestore）。
+技术：React 19 + TypeScript + Tailwind CSS 4 + Vite，可选 Firebase（Firestore）。
 
 推送到 `main` 后，GitHub Actions（`.github/workflows/deploy.yml`）会自动建置并部署到 GitHub Pages。
 

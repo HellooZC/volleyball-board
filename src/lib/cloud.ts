@@ -3,10 +3,10 @@ import { formCount, normalizeTeam, type DB, type Match, type Team } from './mode
 import { getDB, onLocalCommit, store } from './store'
 
 /**
- * Firebase 云端同步。
+ * Firebase 云端同步（不用登录：打开网站就自动同步，所有人看到同一份资料）。
  *
  * - 没设定 VITE_FIREBASE_* 环境变量时完全不载入 Firebase，app 只存本机。
- * - 登录后：teams / matches 两个集合，每支队、每场对局各是一份文件（{ json, updatedAt, by }）。
+ * - teams / matches 两个集合，每支队、每场对局各是一份文件（{ json, updatedAt }）。
  * - 谁的 updatedAt 比较新就用谁的；离线时改动先排队，连上网自动送出。
  */
 
@@ -19,17 +19,17 @@ const config = {
 }
 export const cloudEnabled = Object.values(config).every(Boolean)
 
-export type CloudStatus = 'off' | 'loading' | 'signed-out' | 'syncing' | 'synced' | 'offline' | 'denied' | 'error'
+export type CloudStatus = 'off' | 'loading' | 'syncing' | 'synced' | 'offline' | 'denied' | 'error'
 interface CloudState {
   status: CloudStatus
-  email: string | null
+  /** 正在同步（已连上云端） */
+  active: boolean
   message?: string
 }
 
 export const CLOUD_LABEL: Record<CloudStatus, string> = {
   off: '只存本机',
   loading: '连接中…',
-  'signed-out': '未登录',
   syncing: '同步中…',
   synced: '已同步',
   offline: '离线，连网后自动同步',
@@ -37,7 +37,7 @@ export const CLOUD_LABEL: Record<CloudStatus, string> = {
   error: '同步出错',
 }
 
-let state: CloudState = { status: cloudEnabled ? 'loading' : 'off', email: null }
+let state: CloudState = { status: cloudEnabled ? 'loading' : 'off', active: false }
 const listeners = new Set<() => void>()
 const set = (p: Partial<CloudState>) => {
   state = { ...state, ...p }
@@ -57,25 +57,19 @@ type Item = Team | Match
 const KINDS: Kind[] = ['teams', 'matches']
 
 async function loadFirebase() {
-  const [{ initializeApp }, auth, fs] = await Promise.all([
-    import('firebase/app'),
-    import('firebase/auth'),
-    import('firebase/firestore'),
-  ])
+  const [{ initializeApp }, fs] = await Promise.all([import('firebase/app'), import('firebase/firestore')])
   const app = initializeApp(config)
-  const a = auth.initializeAuth(app, { persistence: [auth.indexedDBLocalPersistence, auth.browserLocalPersistence] })
   // 本机快取：离线也能读写，改动排队等连网
   const db = fs.initializeFirestore(app, {
     localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }),
   })
-  return { auth, fs, a, db }
+  return { fs, db }
 }
 let fb: Awaited<ReturnType<typeof loadFirebase>> | null = null
 
 /** 云端现在（我们认为）有的版本：id → updatedAt */
 const synced: Record<Kind, Map<string, number>> = { teams: new Map(), matches: new Map() }
 const ready: Record<Kind, boolean> = { teams: false, matches: false }
-let unsubs: (() => void)[] = []
 let pushTimer: ReturnType<typeof setTimeout> | undefined
 let pending = 0
 
@@ -83,7 +77,7 @@ const errCode = (e: unknown) => (e as { code?: string })?.code ?? ''
 const fail = (e: unknown) => {
   const code = errCode(e)
   if (code === 'permission-denied')
-    set({ status: 'denied', message: '这个账号没有权限读写资料。请管理员把你的邮箱加进 Firestore 规则的名单。' })
+    set({ status: 'denied', message: 'Firestore 规则不允许读写。请到 Firebase 控制台 → Firestore Database → Rules 贴上仓库里的 firestore.rules 并按 Publish。' })
   else set({ status: 'error', message: String((e as Error)?.message ?? e) })
 }
 
@@ -106,16 +100,16 @@ function pristine(d: DB) {
   )
 }
 
-function startSync(email: string) {
+function startSync() {
   if (!fb) return
   const { fs, db } = fb
   for (const k of KINDS) {
     synced[k].clear()
     ready[k] = false
   }
-  set({ status: navigator.onLine ? 'syncing' : 'offline', email, message: undefined })
+  set({ status: navigator.onLine ? 'syncing' : 'offline', active: true, message: undefined })
 
-  unsubs = KINDS.map((kind) =>
+  KINDS.forEach((kind) =>
     fs.onSnapshot(
       fs.collection(db, kind),
       // 连快取→伺服器的状态变化也要通知，才知道什么时候真的同步好了
@@ -175,13 +169,6 @@ function startSync(email: string) {
   )
 }
 
-function stopSync() {
-  unsubs.forEach((u) => u())
-  unsubs = []
-  clearTimeout(pushTimer)
-  for (const k of KINDS) ready[k] = false
-}
-
 function schedulePush(delay = 800) {
   clearTimeout(pushTimer)
   pushTimer = setTimeout(push, delay)
@@ -189,7 +176,7 @@ function schedulePush(delay = 800) {
 
 /** 把本机跟云端不一样的（新增、改过、删掉的）送上去 */
 function push() {
-  if (!fb || !state.email || !ready.teams || !ready.matches || state.status === 'denied') return
+  if (!fb || !state.active || !ready.teams || !ready.matches || state.status === 'denied') return
   const { fs, db } = fb
   const cur = getDB()
   const ops: Promise<void>[] = []
@@ -199,7 +186,7 @@ function push() {
       ids.add(it.id)
       if (synced[kind].get(it.id) === it.updatedAt) continue
       synced[kind].set(it.id, it.updatedAt)
-      ops.push(fs.setDoc(fs.doc(db, kind, it.id), { json: JSON.stringify(it), updatedAt: it.updatedAt, by: state.email }))
+      ops.push(fs.setDoc(fs.doc(db, kind, it.id), { json: JSON.stringify(it), updatedAt: it.updatedAt }))
     }
     for (const id of [...synced[kind].keys()]) {
       if (ids.has(id)) continue
@@ -230,43 +217,12 @@ export async function initCloud() {
     set({ status: 'error', message: '无法载入 Firebase：' + String((e as Error)?.message ?? e) })
     return
   }
-  fb.auth.onAuthStateChanged(fb.a, (user) => {
-    stopSync()
-    if (user) startSync(user.email ?? '')
-    else set({ status: 'signed-out', email: null, message: undefined })
-  })
+  startSync()
   onLocalCommit(() => schedulePush())
-  addEventListener('offline', () => state.email && set({ status: 'offline' }))
+  addEventListener('offline', () => state.active && set({ status: 'offline' }))
   addEventListener('online', () => {
-    if (!state.email || !fb) return
+    if (!state.active || !fb) return
     set({ status: 'syncing' })
     fb.fs.waitForPendingWrites(fb.db).then(() => !pending && set({ status: 'synced' }), fail)
   })
-}
-
-export async function signIn(email: string, password: string) {
-  if (!fb) throw new Error('Firebase 还没载入')
-  await fb.auth.signInWithEmailAndPassword(fb.a, email.trim(), password)
-}
-export async function signOutCloud() {
-  if (fb) await fb.auth.signOut(fb.a)
-}
-export async function resetPassword(email: string) {
-  if (!fb) throw new Error('Firebase 还没载入')
-  await fb.auth.sendPasswordResetEmail(fb.a, email.trim())
-}
-
-export function authErrorText(e: unknown) {
-  const code = errCode(e)
-  const map: Record<string, string> = {
-    'auth/invalid-credential': '邮箱或密码不对',
-    'auth/wrong-password': '邮箱或密码不对',
-    'auth/user-not-found': '邮箱或密码不对',
-    'auth/invalid-email': '邮箱格式不对',
-    'auth/missing-password': '请输入密码',
-    'auth/user-disabled': '这个账号已被停用',
-    'auth/too-many-requests': '尝试太多次，请过几分钟再试',
-    'auth/network-request-failed': '网络连不上，请检查网络',
-  }
-  return map[code] ?? `登录失败（${code || String(e)}）`
 }

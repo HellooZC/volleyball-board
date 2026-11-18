@@ -69,7 +69,7 @@ export function ScoreBar({ board, onPoint, onHelp, variant = 'bar', title, subti
     </button>
   )
   const cloud = useCloud()
-  const statusText = cloud.email ? CLOUD_LABEL[cloud.status] : STATUS[board.status]
+  const statusText = cloud.active ? CLOUD_LABEL[cloud.status] : STATUS[board.status]
   const bad = board.status === 'failed' || cloud.status === 'denied' || cloud.status === 'error'
   const [w, l] = setScore(s)
   const setNo = (s.sets?.length ?? 0) + 1

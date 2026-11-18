@@ -14,6 +14,12 @@ export type BoardUpdate = (fn: (d: BoardState) => void) => void
  */
 export function useBoard(base: BoardState, update: BoardUpdate, mode: 'match' | 'template' = 'match') {
   const [typeState, setType] = useState<FormType>(() => (base.serving ? 'def' : 'recv'))
+  // 发球方一变（本机计分、手动切换，或别的设备同步过来）就自动切换画面：对方发球 → 接发球阵型
+  const [lastServing, setLastServing] = useState(base.serving)
+  if (base.serving !== lastServing) {
+    setLastServing(base.serving)
+    setType(base.serving ? 'def' : 'recv')
+  }
   const type: FormType = mode === 'template' ? 'recv' : typeState
   const status = useSaveStatus()
   /** 我方发球时的临时站位 / 画线（不保存） */

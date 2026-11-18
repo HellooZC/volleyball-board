@@ -1,22 +1,24 @@
 rules_version = '2';
 
-// 战术板的 Firestore 安全规则。
-// 只有名单里的邮箱可以读写；要加 / 删教练，改下面的名单再按“发布”。
-// 邮箱一律写小写。
+// 战术板的 Firestore 安全规则（不用登录版）。
+// 打开网站的人都能读写 teams / matches 两个集合；其他集合一律拒绝，
+// 写入时检查资料格式和大小，避免被拿来乱存东西。
 service cloud.firestore {
   match /databases/{database}/documents {
-    function allowed() {
-      return request.auth != null && request.auth.token.email in [
-        'coach1@example.com',
-        'coach2@example.com'
-      ];
+    function ours(c) {
+      return c in ['teams', 'matches'];
+    }
+    function validDoc() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['json', 'updatedAt', 'by'])
+        && d.json is string
+        && d.json.size() < 900000
+        && d.updatedAt is number;
     }
 
-    match /teams/{id} {
-      allow read, write: if allowed();
-    }
-    match /matches/{id} {
-      allow read, write: if allowed();
+    match /{collection}/{id} {
+      allow read, delete: if ours(collection);
+      allow create, update: if ours(collection) && validDoc();
     }
   }
 }
