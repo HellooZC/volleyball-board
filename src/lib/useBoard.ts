@@ -6,21 +6,41 @@ export type { SaveStatus } from './store'
 export type BoardUpdate = (fn: (d: BoardState) => void) => void
 
 /**
- * 战术板的操作。状态本身由外面提供（对局或队形模板），这里只负责“怎么改”。
- * @param mode match：有计分；template：只摆队形
+ * 战术板的操作。状态本身由外面提供（对局或队伍阵型），这里只负责“怎么改”。
+ * @param mode match：有计分；template：只摆队伍的 6 个接发球阵型
+ *
+ * 站位类型：recv（接发球）存进队伍阵型；def（我方发球）用默认站位，
+ * 拖动 / 画线只是临时讲解用，存在这次打开的画面里，不保存。
  */
-export function useBoard(s: BoardState, update: BoardUpdate, mode: 'match' | 'template' = 'match') {
-  const [type, setType] = useState<FormType>(() => (s.serving ? 'def' : 'recv'))
+export function useBoard(base: BoardState, update: BoardUpdate, mode: 'match' | 'template' = 'match') {
+  const [typeState, setType] = useState<FormType>(() => (base.serving ? 'def' : 'recv'))
+  const type: FormType = mode === 'template' ? 'recv' : typeState
   const status = useSaveStatus()
+  /** 我方发球时的临时站位 / 画线（不保存） */
+  const [scratch, setScratch] = useState<Record<string, Form>>({})
   /** 每个阵形的移动历史（只在本次打开期间保留），用来“撤销移动” */
   const [moveHist, setMoveHist] = useState<Record<string, (Form['pos'] | undefined)[]>>({})
   const pushHist = (k: string, pos: Form['pos']) =>
     setMoveHist((h) => ({ ...h, [k]: [...(h[k] ?? []), structuredClone(pos)] }))
 
-  const key = formKey(s.rot, type)
+  const key = formKey(base.rot, type)
+  const temp = type === 'def'
+  const s = useMemo(
+    () => (temp ? { ...base, forms: { ...base.forms, [key]: scratch[key] ?? {} } } : base),
+    [base, temp, key, scratch],
+  )
 
   const actions = useMemo(() => {
     const form = (d: BoardState, k: string): Form => (d.forms[k] ??= {})
+    /** 改站位 / 画线：接发球写进队伍，我方发球只改临时画面 */
+    const formUpdate: BoardUpdate = temp
+      ? (fn) =>
+          setScratch((sc) => {
+            const d = { forms: { [key]: structuredClone(sc[key] ?? {}) } } as unknown as BoardState
+            fn(d)
+            return { ...sc, [key]: d.forms[key] ?? {} }
+          })
+      : update
     return {
       setRot: (rot: number) => update((d) => void (d.rot = rot)),
       setType,
@@ -85,7 +105,7 @@ export function useBoard(s: BoardState, update: BoardUpdate, mode: 'match' | 'te
       /** 拖完自动保存：第一次改动时把 6 个位置都写进去 */
       movePlayer: (p: number, xy: XY) => {
         pushHist(key, s.forms[key]?.pos)
-        update((d) => {
+        formUpdate((d) => {
           const f = form(d, key)
           const pos = (f.pos ??= {})
           for (let i = 1; i <= 6; i++) pos[i] ??= [...DEF_POS[type][i]] as XY
@@ -97,7 +117,7 @@ export function useBoard(s: BoardState, update: BoardUpdate, mode: 'match' | 'te
         if (!h?.length) return
         const prev = h[h.length - 1]
         setMoveHist((m) => ({ ...m, [key]: h.slice(0, -1) }))
-        update((d) => {
+        formUpdate((d) => {
           const f = form(d, key)
           if (prev) f.pos = prev
           else delete f.pos
@@ -106,29 +126,26 @@ export function useBoard(s: BoardState, update: BoardUpdate, mode: 'match' | 'te
       resetPos: () => {
         if (!s.forms[key]?.pos) return
         pushHist(key, s.forms[key]?.pos)
-        update((d) => void delete form(d, key).pos)
+        formUpdate((d) => void delete form(d, key).pos)
       },
       moveOpp: (i: number, xy: XY) => update((d) => void (d.oppPos[i] = xy)),
       moveBall: (xy: XY) => update((d) => void (d.ball = xy)),
 
-      addStroke: (st: Stroke) => update((d) => void (form(d, key).strokes ??= []).push(st)),
-      undoStroke: () => update((d) => void form(d, key).strokes?.pop()),
-      clearStrokes: () => update((d) => void (form(d, key).strokes = [])),
-      setNote: (note: string) => update((d) => void (form(d, key).note = note)),
-
-      /** 整套队形换掉（导入模板时用） */
-      replaceForms: (forms: Record<string, Form>) => {
-        setMoveHist({})
-        update((d) => void (d.forms = structuredClone(forms)))
-      },
+      addStroke: (st: Stroke) => formUpdate((d) => void (form(d, key).strokes ??= []).push(st)),
+      undoStroke: () => formUpdate((d) => void form(d, key).strokes?.pop()),
+      clearStrokes: () => formUpdate((d) => void (form(d, key).strokes = [])),
+      /** 备注跟着轮转（存在接发球阵型里），我方发球时看到的也是同一则 */
+      setNote: (note: string) => update((d) => void (form(d, formKey(d.rot, 'recv')).note = note)),
     }
-  }, [update, key, type, s, moveHist])
+  }, [update, key, type, s, moveHist, temp])
 
   return {
     s,
     mode,
     type,
     key,
+    /** 我方发球的临时画面（不保存） */
+    temp,
     status,
     canUndoMove: !!moveHist[key]?.length,
     update,

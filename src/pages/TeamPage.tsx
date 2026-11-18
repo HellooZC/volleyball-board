@@ -1,50 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BoardScreen, type HeaderVariant } from '../components/BoardScreen'
-import { ConfirmButton } from '../components/ConfirmButton'
 import { Icon } from '../components/Icons'
 import { Field, Modal } from '../components/Modal'
-import { Toast } from '../components/Toast'
-import { useToast } from '../lib/useToast'
-import { fresh, tplCount, uid, type BoardState, type Team, type Template, type XY } from '../lib/model'
+import { formCount, fresh, type BoardState, type Team, type XY } from '../lib/model'
 import { go } from '../lib/router'
-import { store, useDB } from '../lib/store'
+import { getDB, store, useDB } from '../lib/store'
 import { useBoard } from '../lib/useBoard'
 import { NotFound } from './NotFound'
 
-export function TeamPage({ id, tplId }: { id: string; tplId?: string }) {
+export function TeamPage({ id }: { id: string }) {
   const team = useDB().teams.find((t) => t.id === id)
   if (!team) return <NotFound text="找不到这支队伍，可能已经删除了。" />
-  const tpl = team.templates.find((t) => t.id === tplId) ?? team.templates[0]
-  if (!tpl) return <EnsureTemplate teamId={team.id} />
-  return <TemplateBoard key={team.id + ':' + tpl.id} team={team} tpl={tpl} />
+  return <TeamBoard key={team.id} team={team} />
 }
 
-/** 队伍至少要有一套模板 */
-function EnsureTemplate({ teamId }: { teamId: string }) {
-  useEffect(() => {
-    store.updateTeam(teamId, (t) => {
-      if (!t.templates.length) t.templates.push({ id: uid(), name: '默认队形', forms: {}, updatedAt: Date.now() })
-    })
-  }, [teamId])
-  return null
-}
-
-/** 模板编辑时，把“队伍 + 模板”拼成战术板状态；对手和球的位置只在画面上，不存 */
-function derive(team: Team, tpl: Template | undefined, rot: number, extra: { oppPos: XY[]; ball: XY }): BoardState {
+/** 队伍页：把队伍拼成战术板状态；对手和球的位置只在画面上，不存 */
+function derive(team: Team, rot: number, extra: { oppPos: XY[]; ball: XY }): BoardState {
   return {
     ...fresh(),
     roster: team.roster,
     lineup: team.lineup,
     libero: team.libero,
     nextId: team.nextId,
-    forms: tpl?.forms ?? {},
+    forms: team.forms,
     rot,
     oppPos: extra.oppPos,
     ball: extra.ball,
   }
 }
 
-function TemplateBoard({ team, tpl }: { team: Team; tpl: Template }) {
+function TeamBoard({ team }: { team: Team }) {
   const [rot, setRot] = useState(0)
   const [extra, setExtra] = useState(() => {
     const f = fresh()
@@ -54,131 +39,61 @@ function TemplateBoard({ team, tpl }: { team: Team; tpl: Template }) {
   useEffect(() => {
     live.current = { rot, extra }
   }, [rot, extra])
-  const [toast, flash] = useToast()
 
-  const s = useMemo(() => derive(team, tpl, rot, extra), [team, tpl, rot, extra])
+  const s = useMemo(() => derive(team, rot, extra), [team, rot, extra])
 
   const update = useCallback(
     (fn: (d: BoardState) => void) => {
       const cur = live.current
+      const t0 = getDB().teams.find((t) => t.id === team.id)
+      if (!t0) return
       // 先在副本上改，看改了什么：只换轮转或挪对手 / 球，就不用写进队伍
-      const team0 = structuredClone(team)
-      const tp0 = team0.templates.find((x) => x.id === tpl.id)
-      const d = derive(team0, tp0, cur.rot, structuredClone(cur.extra))
-      const before = JSON.stringify([d.roster, d.lineup, d.libero, d.nextId, d.forms])
+      const d = derive(structuredClone(t0), cur.rot, structuredClone(cur.extra))
+      const pick = (x: BoardState) => JSON.stringify([x.roster, x.lineup, x.libero, x.nextId, x.forms])
+      const before = pick(d)
       fn(d)
-      if (d.rot !== cur.rot) setRot(d.rot)
+      if (d.rot !== cur.rot) {
+        live.current = { ...live.current, rot: d.rot }
+        setRot(d.rot)
+      }
       if (JSON.stringify([d.oppPos, d.ball]) !== JSON.stringify([cur.extra.oppPos, cur.extra.ball]))
         setExtra({ oppPos: d.oppPos, ball: d.ball })
-      if (JSON.stringify([d.roster, d.lineup, d.libero, d.nextId, d.forms]) === before) return
+      if (pick(d) === before) return
       store.updateTeam(team.id, (t) => {
         t.roster = d.roster
         t.lineup = d.lineup
         t.libero = d.libero
         t.nextId = d.nextId
-        const tp = t.templates.find((x) => x.id === tpl.id)
-        if (tp) {
-          tp.forms = d.forms
-          tp.updatedAt = Date.now()
-        }
+        t.forms = d.forms
       })
     },
-    [team, tpl.id],
+    [team.id],
   )
   const board = useBoard(s, update, 'template')
 
   return (
-    <>
-      <BoardScreen
-        board={board}
-        tabs={['lineup', 'roster']}
-        renderHeader={(variant, ctx) => <TeamBar variant={variant} team={team} tpl={tpl} onHelp={ctx.help} flash={flash} />}
-      />
-      <Toast toast={toast} />
-    </>
+    <BoardScreen
+      board={board}
+      tabs={['overview', 'lineup', 'roster']}
+      renderHeader={(variant, ctx) => <TeamBar variant={variant} team={team} onHelp={ctx.help} />}
+    />
   )
 }
 
-function TeamBar({
-  variant,
-  team,
-  tpl,
-  onHelp,
-  flash,
-}: {
-  variant: HeaderVariant
-  team: Team
-  tpl: Template
-  onHelp: () => void
-  flash: (t: string) => void
-}) {
-  const [rename, setRename] = useState<null | 'team' | 'tpl'>(null)
+function TeamBar({ variant, team, onHelp }: { variant: HeaderVariant; team: Team; onHelp: () => void }) {
+  const [rename, setRename] = useState(false)
+  const n = formCount(team.forms)
 
-  const addTpl = (copy: boolean) => {
-    const n: Template = {
-      id: uid(),
-      name: copy ? `${tpl.name} 副本` : `队形 ${team.templates.length + 1}`,
-      forms: copy ? structuredClone(tpl.forms) : {},
-      updatedAt: Date.now(),
-    }
-    store.updateTeam(team.id, (t) => void t.templates.push(n))
-    go.team(team.id, n.id)
-    flash(copy ? `已复制成「${n.name}」` : `已新建「${n.name}」`)
-  }
-  const delTpl = () => {
-    const rest = team.templates.filter((x) => x.id !== tpl.id)
-    store.updateTeam(team.id, (t) => void (t.templates = t.templates.filter((x) => x.id !== tpl.id)))
-    go.team(team.id, rest[0]?.id)
-    flash(`已删除「${tpl.name}」`)
-  }
-
-  const picker = (
-    <select
-      className={'field min-w-0 font-bold' + (variant === 'stack' ? ' text-sm' : '')}
-      aria-label="选择队形模板"
-      value={tpl.id}
-      onChange={(e) => go.team(team.id, e.target.value)}
-    >
-      {team.templates.map((t) => (
-        <option key={t.id} value={t.id}>
-          {t.name}（已摆 {tplCount(t.forms)}/12）
-        </option>
-      ))}
-    </select>
-  )
-  const actions = (
-    <>
-      <button className="btn px-2" onClick={() => addTpl(false)} title="新建空白模板" aria-label="新建模板">
-        <Icon name="plus" />
-        <span className="max-xl:hidden">新建</span>
-      </button>
-      <button className="btn px-2" onClick={() => addTpl(true)} title="复制这套模板" aria-label="复制模板">
-        <Icon name="copy" />
-        <span className="max-xl:hidden">复制</span>
-      </button>
-      <button className="btn px-2" onClick={() => setRename('tpl')} title="模板改名" aria-label="模板改名">
-        <Icon name="edit" />
-        <span className="max-xl:hidden">改名</span>
-      </button>
-      {team.templates.length > 1 && (
-        <ConfirmButton
-          className="btn px-2"
-          icon={<Icon name="trash" />}
-          ariaLabel="删除模板"
-          confirm="再点删除"
-          onConfirm={delTpl}
-        />
-      )}
-    </>
-  )
   const title = (
     <button
       className="min-w-0 cursor-pointer rounded-md text-left leading-tight hover:underline focus-visible:outline-2 focus-visible:outline-accent"
-      onClick={() => setRename('team')}
+      onClick={() => setRename(true)}
       title="队名改名"
     >
       <p className="truncate text-sm font-bold">{team.name}</p>
-      <p className="truncate text-xs text-mute">{variant === 'stack' ? '队形模板' : '队形模板 · 拖完自动保存'}</p>
+      <p className="truncate text-xs text-mute">
+        接发球阵型 · 已摆 {n}/6{variant === 'bar' ? ' · 拖完自动保存' : ''}
+      </p>
     </button>
   )
   const back = (cls = '') => (
@@ -192,50 +107,41 @@ function TeamBar({
       ?
     </button>
   )
-
   const dialog = (
     <RenameDialog
-      open={rename !== null}
-      title={rename === 'team' ? '队名' : '模板名称'}
-      value={rename === 'team' ? team.name : tpl.name}
-      onClose={() => setRename(null)}
-      onSave={(v) =>
-        store.updateTeam(team.id, (t) => {
-          if (rename === 'team') t.name = v
-          else {
-            const x = t.templates.find((y) => y.id === tpl.id)
-            if (x) x.name = v
-          }
-        })
-      }
+      open={rename}
+      title="队名"
+      value={team.name}
+      onClose={() => setRename(false)}
+      onSave={(v) => store.updateTeam(team.id, (t) => void (t.name = v))}
     />
   )
+  const tip = <p className="text-xs leading-snug text-mute">每个轮转摆一个接发球阵型；对局里对方发球时会自动摆出当前轮转的阵型。</p>
 
   if (variant === 'stack') {
     return (
-      <section className="card flex flex-col gap-1.5 p-2" aria-label="队伍和模板">
+      <section className="card flex flex-col gap-1.5 p-2" aria-label="队伍">
         <div className="flex items-center gap-1.5">
           {back('size-8 min-h-8 p-0')}
           {title}
           <span className="ml-auto">{help('size-7 min-h-7 text-xs')}</span>
         </div>
-        {picker}
-        <div className="grid grid-cols-4 gap-1">{actions}</div>
+        {tip}
         {dialog}
       </section>
     )
   }
   return (
-    <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-panel px-3 py-2 lg:flex-nowrap lg:px-4">
-      <div className="flex min-w-0 flex-1 items-center gap-2 lg:max-w-64 lg:flex-none">
+    <header className="flex items-center gap-3 border-b border-line bg-panel px-3 py-2 lg:px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         {back()}
         {title}
       </div>
-      <div className="order-last flex w-full min-w-0 items-center gap-1.5 lg:order-none lg:w-auto lg:flex-1 lg:justify-center">
-        <span className="label shrink-0 max-sm:hidden">模板</span>
-        <div className="min-w-0 flex-1 lg:max-w-72">{picker}</div>
-        {actions}
-      </div>
+      <div className="hidden max-w-md lg:block">{tip}</div>
+      <button className="btn shrink-0 px-2" onClick={() => setRename(true)}>
+        <Icon name="edit" />
+        <span className="max-sm:hidden">改队名</span>
+      </button>
       {help()}
       {dialog}
     </header>

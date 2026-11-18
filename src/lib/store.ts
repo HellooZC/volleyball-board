@@ -113,8 +113,13 @@ export const store = {
   deleteMatch(id: string) {
     commit({ ...db, matches: db.matches.filter((m) => m.id !== id) })
   },
+  /** 删队伍前，把它的阵型留一份在它的对局里（对局平常直接用队伍的阵型） */
   deleteTeam(id: string) {
-    commit({ ...db, teams: db.teams.filter((t) => t.id !== id) })
+    const team = db.teams.find((t) => t.id === id)
+    const matches = db.matches.map((m) =>
+      m.teamId === id && team ? { ...m, forms: structuredClone(team.forms), updatedAt: Date.now() } : m,
+    )
+    commit({ ...db, teams: db.teams.filter((t) => t.id !== id), matches })
   },
   replace(next: DB) {
     commit(next)

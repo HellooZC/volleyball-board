@@ -1,31 +1,47 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import { BoardScreen } from '../components/BoardScreen'
 import { ConfirmButton } from '../components/ConfirmButton'
-import { ImportDialog, SaveTemplateDialog } from '../components/FormationDialog'
-import { Icon } from '../components/Icons'
 import { ScoreBar } from '../components/ScoreBar'
 import { Toast } from '../components/Toast'
 import { useToast } from '../lib/useToast'
-import { setScore, type BoardState, type Match } from '../lib/model'
+import { setScore, type BoardState, type Match, type Team } from '../lib/model'
 import { go } from '../lib/router'
-import { store, useDB } from '../lib/store'
+import { getDB, store, useDB } from '../lib/store'
 import { useBoard } from '../lib/useBoard'
 import { NotFound } from './NotFound'
 
 export function MatchPage({ id }: { id: string }) {
-  const m = useDB().matches.find((x) => x.id === id)
+  const db = useDB()
+  const m = db.matches.find((x) => x.id === id)
   if (!m) return <NotFound text="找不到这场对局，可能已经删除了。" />
-  return <MatchBoard key={id} m={m} />
+  return <MatchBoard key={id} m={m} team={db.teams.find((t) => t.id === m.teamId)} />
 }
 
-function MatchBoard({ m }: { m: Match }) {
+/** 对局画面：比分、换人等记在对局里；接发球阵型直接读写队伍的（队伍被删掉时才用对局自己的备份） */
+function MatchBoard({ m, team }: { m: Match; team: Team | undefined }) {
+  const s = useMemo<BoardState>(() => (team ? { ...m, forms: team.forms } : m), [m, team])
   const update = useCallback(
-    (fn: (d: BoardState) => void) => store.updateMatch(m.id, fn as (d: Match) => void),
+    (fn: (d: BoardState) => void) => {
+      const cur = getDB()
+      const m0 = cur.matches.find((x) => x.id === m.id)
+      if (!m0) return
+      const t0 = cur.teams.find((t) => t.id === m0.teamId)
+      const d = structuredClone(t0 ? { ...m0, forms: t0.forms } : m0)
+      const { forms: f0, ...rest0 } = d
+      const before = [JSON.stringify(f0), JSON.stringify(rest0)]
+      fn(d)
+      const { forms, ...rest } = d
+      // 只写有变的那一边，避免没改的资料也被标成“刚更新”
+      if (t0 && JSON.stringify(forms) !== before[0]) store.updateTeam(t0.id, (t) => void (t.forms = forms))
+      if (JSON.stringify(rest) !== before[1] || (!t0 && JSON.stringify(forms) !== before[0]))
+        store.updateMatch(m.id, (x) => {
+          Object.assign(x, rest)
+          if (!t0) x.forms = forms
+        })
+    },
     [m.id],
   )
-  const board = useBoard(m, update, 'match')
-  const [importOpen, setImportOpen] = useState(false)
-  const [saveOpen, setSaveOpen] = useState(false)
+  const board = useBoard(s, update, 'match')
   const [toast, flash] = useToast()
   const [w, l] = setScore(m)
   const done = m.status === 'done'
@@ -36,17 +52,15 @@ function MatchBoard({ m }: { m: Match }) {
     flash('比赛已结束，记录已保存')
   }
 
-  const formTools = (
-    <div className="grid grid-cols-2 gap-1.5">
-      <button className="btn px-1.5 whitespace-nowrap" onClick={() => setImportOpen(true)} title="从队伍的队形模板套用">
-        <Icon name="import" />
-        导入队形
+  const formTools = team ? (
+    <p className="text-xs leading-snug text-mute">
+      接发球阵型存在「{team.name}」，在这里拖动也会改到队伍，下一场一样用。
+      <button className="ml-1 cursor-pointer text-accent underline-offset-2 hover:underline" onClick={() => go.team(team.id)}>
+        到队伍页
       </button>
-      <button className="btn px-1.5 whitespace-nowrap" onClick={() => setSaveOpen(true)} title="把现在的队形存回队伍">
-        <Icon name="save" />
-        存为模板
-      </button>
-    </div>
+    </p>
+  ) : (
+    <p className="text-xs text-mute">这场对局的队伍已删除，阵型只存在这场。</p>
   )
 
   const logExtra = (
@@ -71,7 +85,7 @@ function MatchBoard({ m }: { m: Match }) {
     <>
       <BoardScreen
         board={board}
-        tabs={['lineup', 'roster', 'log']}
+        tabs={['lineup', 'roster', 'log', 'overview']}
         formTools={formTools}
         logExtra={logExtra}
         renderHeader={(variant, ctx) => (
@@ -85,23 +99,6 @@ function MatchBoard({ m }: { m: Match }) {
             subtitle={done ? `已结束 · 局分 ${w}:${l}` : undefined}
           />
         )}
-      />
-      <ImportDialog
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        preferTeamId={m.teamId}
-        onImport={(tpl) => {
-          board.replaceForms(tpl.forms)
-          store.updateMatch(m.id, (d) => void (d.templateName = tpl.name))
-          flash(`已导入「${tpl.name}」`)
-        }}
-      />
-      <SaveTemplateDialog
-        open={saveOpen}
-        onClose={() => setSaveOpen(false)}
-        preferTeamId={m.teamId}
-        forms={m.forms}
-        onSaved={flash}
       />
       <Toast toast={toast} />
     </>

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { tplCount, type DB, type Match, type Team } from './model'
+import { formCount, normalizeTeam, type DB, type Match, type Team } from './model'
 import { getDB, onLocalCommit, store } from './store'
 
 /**
@@ -87,10 +87,11 @@ const fail = (e: unknown) => {
   else set({ status: 'error', message: String((e as Error)?.message ?? e) })
 }
 
-function parse(data: unknown): Item | null {
+function parse(kind: Kind, data: unknown): Item | null {
   try {
     const o = JSON.parse((data as { json: string }).json)
-    return o && typeof o.id === 'string' ? o : null
+    if (!o || typeof o.id !== 'string') return null
+    return kind === 'teams' ? normalizeTeam(o) : o
   } catch {
     return null
   }
@@ -101,7 +102,7 @@ function pristine(d: DB) {
   return (
     d.matches.length === 0 &&
     d.teams.length <= 1 &&
-    d.teams.every((t) => t.name === '我的球队' && t.templates.every((tp) => tplCount(tp.forms) === 0))
+    d.teams.every((t) => t.name === '我的球队' && formCount(t.forms ?? {}) === 0)
   )
 }
 
@@ -132,7 +133,7 @@ function startSync(email: string) {
           ready[kind] = true
           const remote = new Map<string, Item>()
           for (const d of snap.docs) {
-            const it = parse(d.data())
+            const it = parse(kind, d.data())
             if (it) remote.set(d.id, it)
           }
           if (kind === 'teams' && remote.size && pristine(local)) list = []
@@ -152,7 +153,7 @@ function startSync(email: string) {
               list = list.filter((x) => x.id !== id)
               continue
             }
-            const r = parse(ch.doc.data())
+            const r = parse(kind, ch.doc.data())
             if (!r) continue
             synced[kind].set(id, r.updatedAt)
             const i = list.findIndex((x) => x.id === id)

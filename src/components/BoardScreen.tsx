@@ -65,7 +65,7 @@ export function BoardScreen({ board, renderHeader, tabs, logExtra, formTools }: 
     'vb-view-land': readPref('vb-view-land', 'half', ['full', 'half'] as const),
   }))
   const view = views[viewKey]
-  const [tab, setTabRaw] = useState<PanelTab>(() => readPref('vb-tab', 'lineup', ['lineup', 'roster', 'log', 'tools'] as const))
+  const [tab, setTabRaw] = useState<PanelTab>(() => readPref('vb-tab', 'lineup', ['overview', 'lineup', 'roster', 'log', 'tools'] as const))
   const ctx = { point: (won: boolean) => point(won), help: () => setHelp(true) }
   const [pen, setPen] = useState(false)
   const [penColor, setPenColor] = useState(PEN_COLORS[0][0])
@@ -140,7 +140,9 @@ export function BoardScreen({ board, renderHeader, tabs, logExtra, formTools }: 
         <span className="rounded-full bg-ink/80 px-2.5 py-1 text-xs font-bold text-bg">
           轮转 {board.s.rot + 1} · {TYPE_LABEL[board.type]}
         </span>
-        <span className="rounded-full bg-panel/85 px-2.5 py-1 text-xs text-mute">{custom ? '已摆站位' : '默认站位'}</span>
+        <span className="rounded-full bg-panel/85 px-2.5 py-1 text-xs text-mute">
+          {board.temp ? '默认站位 · 临时调整不保存' : custom ? '已摆阵型' : '还没摆，显示默认站位'}
+        </span>
         {pen && <span className="animate-fade rounded-full bg-accent px-2.5 py-1 text-xs font-bold text-accent-ink">画笔中</span>}
         {board.mode === 'match' && (
           <span
@@ -193,6 +195,8 @@ export function BoardScreen({ board, renderHeader, tabs, logExtra, formTools }: 
     </main>
   )
 
+  // 只有对局需要切“接发球 / 我方发球”；队伍页只摆接发球阵型
+  const typeToggle = board.mode === 'match' ? <TypeToggle board={board} /> : null
   const penTools = <PenTools board={board} pen={pen} setPen={setPen} color={penColor} setColor={setPenColor} />
   const sheetEl = sheet && (
     <Sheet side={layout === 'land' ? 'right' : 'bottom'} onClose={() => setSheet(false)}>
@@ -238,7 +242,7 @@ export function BoardScreen({ board, renderHeader, tabs, logExtra, formTools }: 
         <div className="flex min-h-0 min-w-0 flex-col">{courtArea}</div>
         <nav className="card flex max-h-full min-h-0 flex-col gap-2 self-start overflow-y-auto p-2" aria-label="轮转和工具">
           <RotationPicker board={board} />
-          <TypeToggle board={board} />
+          {typeToggle}
           <div className="grid grid-cols-2 gap-1.5 [&>button]:px-1">{quickTools}</div>
         </nav>
         {sheetEl}
@@ -257,8 +261,8 @@ export function BoardScreen({ board, renderHeader, tabs, logExtra, formTools }: 
             <Section title="轮转">
               <RotationPicker board={board} />
             </Section>
-            <Section title="站位">
-              <TypeToggle board={board} />
+            <Section title={board.mode === 'match' ? '站位' : '接发球阵型'}>
+              {typeToggle}
               <ViewToggle view={view} onChange={setView} />
               <PosTools board={board} />
               {formTools}
@@ -280,8 +284,8 @@ export function BoardScreen({ board, renderHeader, tabs, logExtra, formTools }: 
           <div className="flex min-h-0 flex-1 flex-col p-2">{courtArea}</div>
           <nav className="flex flex-col gap-2 border-t border-line bg-panel p-2" aria-label="轮转和工具">
             <RotationPicker board={board} cols={6} />
-            <div className="grid grid-cols-[1fr_auto_auto] gap-2">
-              <TypeToggle board={board} />
+            <div className={'grid gap-2 ' + (typeToggle ? 'grid-cols-[1fr_auto_auto]' : 'grid-cols-2')}>
+              {typeToggle}
               {quickTools}
             </div>
           </nav>

@@ -11,9 +11,10 @@ import {
 } from '../lib/model'
 import type { Board } from '../lib/useBoard'
 import { Segmented } from './Controls'
+import { RotationOverview } from './RotationOverview'
 import { Icon } from './Icons'
 
-export type PanelTab = 'lineup' | 'roster' | 'log' | 'tools'
+export type PanelTab = 'overview' | 'lineup' | 'roster' | 'log' | 'tools'
 
 export function SidePanel({
   board,
@@ -31,7 +32,7 @@ export function SidePanel({
   /** 窄屏时多一个“站位”分页，放全场/半场、撤销移动、画笔颜色和备注 */
   tools?: React.ReactNode
 }) {
-  const LABEL: Record<PanelTab, string> = { tools: '站位', lineup: '场上', roster: '名单', log: '记录' }
+  const LABEL: Record<PanelTab, string> = { tools: '站位', overview: '一览', lineup: '场上', roster: '名单', log: '记录' }
   const options: [PanelTab, string][] = tabs.map((k) => [k, LABEL[k]])
   if (tools) options.unshift(['tools', '站位'])
   return (
@@ -39,6 +40,7 @@ export function SidePanel({
       <Segmented<PanelTab> label="面板" value={tab} onChange={setTab} options={options} />
       <div key={tab} className="min-h-0 flex-1 animate-fade overflow-y-auto overscroll-contain pr-0.5">
         {tab === 'tools' && tools}
+        {tab === 'overview' && <RotationOverview board={board} />}
         {tab === 'lineup' && <Lineup board={board} />}
         {tab === 'roster' && <Roster board={board} />}
         {tab === 'log' && <Log board={board} extra={logExtra} />}

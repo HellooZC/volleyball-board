@@ -60,14 +60,6 @@ export interface BoardState {
   sets?: SetRecord[]
 }
 
-/** 一套队形模板：6 个轮转 × 接发球 / 防守 的站位、画线和备注 */
-export interface Template {
-  id: string
-  name: string
-  forms: Record<string, Form>
-  updatedAt: number
-}
-
 /** 我方的一支队伍 */
 export interface Team {
   id: string
@@ -76,7 +68,11 @@ export interface Team {
   lineup: string[]
   libero: string | null
   nextId: number
-  templates: Template[]
+  /**
+   * 这支队 6 个轮转的接发球阵型（站位、画线、备注），key 是 `${轮转}-recv`。
+   * 对局直接读写这里，所以改一次，每场比赛都用最新的。
+   */
+  forms: Record<string, Form>
   updatedAt: number
 }
 
@@ -88,7 +84,6 @@ export interface Match extends BoardState {
   opponent: string
   date: string
   status: 'live' | 'done'
-  templateName?: string
   createdAt: number
   updatedAt: number
 }
@@ -102,7 +97,8 @@ export interface DB {
 export const ROLES: Record<Role, string> = { OH: '大炮', OP: '举对', S: '举球', MB: '拦中', L: '自由人' }
 export const ROLE_ORDER: Role[] = ['S', 'OH', 'OP', 'MB', 'L']
 export const POSN: Record<number, string> = { 1: '右后', 2: '右前', 3: '中前', 4: '左前', 5: '左后', 6: '中后' }
-export const TYPE_LABEL: Record<FormType, string> = { recv: '接发球', def: '防守' }
+/** recv：对方发球、我方接发球（存成队伍阵型）；def：我方发球（默认站位，临时调整不保存） */
+export const TYPE_LABEL: Record<FormType, string> = { recv: '接发球', def: '我方发球' }
 
 export const DEF_POS: Record<FormType, Record<number, XY>> = {
   recv: { 1: [285, 575], 2: [285, 425], 3: [180, 425], 4: [75, 425], 5: [75, 575], 6: [180, 595] },
@@ -234,12 +230,12 @@ export function newTeam(name: string): Team {
     lineup: base.lineup,
     libero: base.libero,
     nextId: base.nextId,
-    templates: [{ id: uid(), name: '默认队形', forms: {}, updatedAt: Date.now() }],
+    forms: {},
     updatedAt: Date.now(),
   }
 }
 
-export function newMatch(team: Team | null, opponent: string, tpl: Template | null): Match {
+export function newMatch(team: Team | null, opponent: string): Match {
   const base = fresh()
   const now = Date.now()
   return {
@@ -250,7 +246,8 @@ export function newMatch(team: Team | null, opponent: string, tpl: Template | nu
       libero: team.libero,
       nextId: team.nextId,
     }),
-    forms: tpl ? structuredClone(tpl.forms) : {},
+    // 阵型直接用队伍的；这里只在队伍被删掉后当备份
+    forms: {},
     sets: [],
     id: uid(),
     teamId: team?.id ?? null,
@@ -258,7 +255,6 @@ export function newMatch(team: Team | null, opponent: string, tpl: Template | nu
     opponent: opponent.trim() || '对手',
     date: today(),
     status: 'live',
-    templateName: tpl?.name,
     createdAt: now,
     updatedAt: now,
   }
@@ -271,10 +267,10 @@ export function migrateBoard(s: BoardState): DB {
   team.lineup = [...s.lineup]
   team.libero = s.libero
   team.nextId = s.nextId
-  team.templates[0].forms = structuredClone(s.forms)
+  team.forms = recvOnly(s.forms)
   const matches: Match[] = []
   if (s.my || s.opp || s.log.length) {
-    const m = newMatch(team, '对手', team.templates[0])
+    const m = newMatch(team, '对手')
     Object.assign(m, { rot: s.rot, serving: s.serving, my: s.my, opp: s.opp, log: s.log, oppPos: s.oppPos, ball: s.ball })
     m.teamName = team.name
     matches.push(m)
@@ -287,6 +283,7 @@ export function adoptDB(o: unknown): DB | null {
   const d = o as Partial<DB>
   if (d.v === 3 && Array.isArray(d.teams) && Array.isArray(d.matches)) {
     for (const m of d.matches) if (isOldOpp(m.oppPos)) m.oppPos = OPP_DEF.map((a) => [...a] as XY)
+    d.teams = d.teams.map(normalizeTeam)
     return d as DB
   }
   // 也接受旧版单一战术板（含原版数据库存的 {json: "..."}）
@@ -295,10 +292,24 @@ export function adoptDB(o: unknown): DB | null {
   return s ? migrateBoard(s) : null
 }
 
-/** 这套队形摆过几个站位（6 轮转 × 接发球 / 防守 = 12） */
-export function tplCount(forms: Record<string, Form>) {
-  let n = 0
-  for (let r = 0; r < 6; r++) for (const t of ['recv', 'def']) if (Object.keys(forms[`${r}-${t}`]?.pos ?? {}).length) n++
-  return n
+/** 只留接发球阵型（旧版还有防守站位，现在不存了） */
+export function recvOnly(forms: Record<string, Form> | undefined): Record<string, Form> {
+  const out: Record<string, Form> = {}
+  for (const [k, f] of Object.entries(forms ?? {})) if (k.endsWith('-recv')) out[k] = structuredClone(f)
+  return out
 }
 
+/** 旧版队伍有多套模板（templates），改成一支队一套：取第一套的接发球阵型 */
+export function normalizeTeam(t: Team): Team {
+  const old = t as Team & { templates?: { forms: Record<string, Form> }[] }
+  if (old.forms && !old.templates) return t
+  const { templates, ...rest } = old
+  return { ...rest, forms: old.forms ?? recvOnly(templates?.[0]?.forms) }
+}
+
+/** 6 个轮转里摆好几个接发球阵型 */
+export function formCount(forms: Record<string, Form>) {
+  let n = 0
+  for (let r = 0; r < 6; r++) if (Object.keys(forms[`${r}-recv`]?.pos ?? {}).length) n++
+  return n
+}

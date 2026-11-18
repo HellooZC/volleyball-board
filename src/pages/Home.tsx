@@ -6,7 +6,7 @@ import { Ball, Icon } from '../components/Icons'
 import { Field, Modal } from '../components/Modal'
 import { Toast } from '../components/Toast'
 import { useToast } from '../lib/useToast'
-import { adoptDB, newMatch, newTeam, setScore, today, tplCount, type DB, type Match, type Team } from '../lib/model'
+import { adoptDB, formCount, newMatch, newTeam, setScore, today, type DB, type Match, type Team } from '../lib/model'
 import { go } from '../lib/router'
 import { useCloud } from '../lib/cloud'
 import { getDB, store, useDB } from '../lib/store'
@@ -62,7 +62,7 @@ export function Home() {
         </button>
       }
     >
-      <p className="-mt-1 mb-2 text-xs text-mute">每支队可以存多套接发球 / 防守队形，开对局时直接带入。</p>
+      <p className="-mt-1 mb-2 text-xs text-mute">每支队有 6 个轮转的接发球阵型；对局直接用队伍的阵型，改一次每场都用最新的。</p>
       <ul className="flex flex-col gap-2">
         {db.teams.map((t, i) => (
           <TeamItem key={t.id} t={t} i={i} canDelete={db.teams.length > 1} />
@@ -178,7 +178,6 @@ function MatchItem({ m, i }: { m: Match; i: number }) {
             ))}
             {hasCur ? ` · 本局 ${m.my}:${m.opp}` : ''}
           </p>
-          {m.templateName && <p className="truncate text-xs text-mute">队形：{m.templateName}</p>}
         </div>
         <ConfirmButton
           className="btn size-10 shrink-0 p-0"
@@ -193,19 +192,29 @@ function MatchItem({ m, i }: { m: Match; i: number }) {
 }
 
 function TeamItem({ t, i, canDelete }: { t: Team; i: number; canDelete: boolean }) {
+  const n = formCount(t.forms)
   return (
-    <li className="animate-rise rounded-xl border border-line bg-bg p-3" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
-      <div className="flex items-center gap-2">
-        <Icon name="team" className="size-5 text-mute" />
+    <li className="animate-rise" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
+      <div className="flex items-center gap-2 rounded-xl border border-line bg-bg p-3">
+        <Icon name="team" className="size-5 shrink-0 text-mute" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-bold">{t.name}</p>
           <p className="text-xs text-mute">
-            {t.roster.length} 名球员 · {t.templates.length} 套队形
+            {t.roster.length} 名球员 · 接发球阵型 <span className={n === 6 ? 'text-win' : ''}>已摆 {n}/6</span>
           </p>
+          {/* 6 个轮转的进度点 */}
+          <span className="mt-1 flex gap-1" aria-hidden="true">
+            {[0, 1, 2, 3, 4, 5].map((k) => (
+              <i
+                key={k}
+                className={'block h-1.5 w-4 rounded-full ' + (Object.keys(t.forms[`${k}-recv`]?.pos ?? {}).length ? 'bg-win' : 'bg-line')}
+              />
+            ))}
+          </span>
         </div>
         <button className="btn" onClick={() => go.team(t.id)}>
           <Icon name="edit" />
-          编辑
+          编辑阵型
         </button>
         {canDelete && (
           <ConfirmButton
@@ -217,17 +226,6 @@ function TeamItem({ t, i, canDelete }: { t: Team; i: number; canDelete: boolean 
           />
         )}
       </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {t.templates.map((tp) => (
-          <button
-            key={tp.id}
-            onClick={() => go.team(t.id, tp.id)}
-            className="min-h-8 cursor-pointer rounded-full border border-line bg-panel px-2.5 text-xs transition hover:border-accent active:scale-95 focus-visible:outline-2 focus-visible:outline-accent"
-          >
-            {tp.name} <span className="text-mute">{tplCount(tp.forms)}/12</span>
-          </button>
-        ))}
-      </div>
     </li>
   )
 }
@@ -235,8 +233,7 @@ function TeamItem({ t, i, canDelete }: { t: Team; i: number; canDelete: boolean 
 function NewMatchDialog({ open, onClose, teams }: { open: boolean; onClose: () => void; teams: Team[] }) {
   const [teamId, setTeamId] = useState('')
   const team = teams.find((t) => t.id === teamId) ?? teams[0] ?? null
-  const [tplId, setTplId] = useState('')
-  const tpl = tplId === 'none' ? null : (team?.templates.find((t) => t.id === tplId) ?? team?.templates[0] ?? null)
+  const n = team ? formCount(team.forms) : 0
 
   return (
     <Modal open={open} onClose={onClose} title="新对局">
@@ -245,37 +242,27 @@ function NewMatchDialog({ open, onClose, teams }: { open: boolean; onClose: () =
         onSubmit={(e) => {
           e.preventDefault()
           const f = new FormData(e.currentTarget)
-          const m = newMatch(team, String(f.get('opp') ?? ''), tpl)
+          const m = newMatch(team, String(f.get('opp') ?? ''))
           m.date = String(f.get('date') || today())
           store.addMatch(m)
           onClose()
           go.match(m.id)
         }}
       >
-        <Field label="我方队伍">
-          <select
-            className="field"
-            value={team?.id ?? ''}
-            onChange={(e) => {
-              setTeamId(e.target.value)
-              setTplId('')
-            }}
-          >
+        <Field
+          label="我方队伍"
+          hint={
+            team
+              ? `会带入名单和首发；接发球阵型直接用这支队的（已摆 ${n}/6${n < 6 ? '，没摆的轮转用默认站位' : ''}）。`
+              : undefined
+          }
+        >
+          <select className="field" value={team?.id ?? ''} onChange={(e) => setTeamId(e.target.value)}>
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
               </option>
             ))}
-          </select>
-        </Field>
-        <Field label="带入队形" hint="名单、首发和这套队形会复制进对局；比赛中改站位不会动到模板。">
-          <select className="field" value={tpl?.id ?? 'none'} onChange={(e) => setTplId(e.target.value)}>
-            {team?.templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}（已摆 {tplCount(t.forms)}/12）
-              </option>
-            ))}
-            <option value="none">不带入（全部默认站位）</option>
           </select>
         </Field>
         <div className="grid grid-cols-[minmax(0,1fr)_10rem] gap-3">
@@ -314,7 +301,7 @@ function NewTeamDialog({ open, onClose }: { open: boolean; onClose: () => void }
           go.team(t.id)
         }}
       >
-        <Field label="队名" hint="建好后会进入队形编辑，可以改名单、摆接发球 / 防守队形。">
+        <Field label="队名" hint="建好后会进入阵型编辑：改名单，摆 6 个轮转的接发球阵型。">
           <input name="name" className="field" placeholder="例如：男排校队" maxLength={20} autoFocus required />
         </Field>
         <div className="flex justify-end gap-2">

@@ -3,7 +3,7 @@ import type { Board } from '../lib/useBoard'
 import type { CourtView } from './Court'
 import { Icon } from './Icons'
 
-/** 轮转选择：数字 + 两个点（接发球 / 防守有没有自己摆过）+ 本局在这个轮转的得失分 */
+/** 轮转选择：数字 + 一个点（这个轮转的接发球阵型摆好了没有）+ 本局在这个轮转的得失分 */
 export function RotationPicker({ board, cols = 3 }: { board: Board; cols?: 3 | 6 }) {
   const { s } = board
   const stats = rotStats(s.log)
@@ -11,7 +11,6 @@ export function RotationPicker({ board, cols = 3 }: { board: Board; cols?: 3 | 6
     <div role="group" aria-label="选择轮转" className={'grid gap-1.5 ' + (cols === 3 ? 'grid-cols-3' : 'grid-cols-6')}>
       {Array.from({ length: 6 }, (_, k) => {
         const r = isCustom(s, formKey(k, 'recv'))
-        const d = isCustom(s, formKey(k, 'def'))
         const st = stats[k]
         const active = k === s.rot
         return (
@@ -20,13 +19,12 @@ export function RotationPicker({ board, cols = 3 }: { board: Board; cols?: 3 | 6
             className="btn h-auto min-h-14 flex-col gap-0.5 px-1 py-1.5"
             aria-pressed={active}
             onClick={() => board.setRot(k)}
-            aria-label={`轮转${k + 1}，接发球${r ? '已摆' : '默认'}，防守${d ? '已摆' : '默认'}，本局得${st.won}失${st.lost}`}
+            aria-label={`轮转${k + 1}，接发球阵型${r ? '已摆' : '未摆'}${board.mode === 'match' ? `，本局得${st.won}失${st.lost}` : ''}`}
             title={`轮转 ${k + 1}（快捷键 ${k + 1}）`}
           >
             <b className="text-xl leading-none">{k + 1}</b>
-            <span className="flex gap-1" aria-hidden="true">
+            <span className="flex gap-1" aria-hidden="true" title={r ? '接发球阵型已摆' : '接发球阵型未摆'}>
               <Dot on={r} />
-              <Dot on={d} />
             </span>
             {st.won + st.lost > 0 && (
               <span className={'text-[10px] leading-none tabular-nums ' + (active ? '' : 'text-mute')} aria-hidden="true">
@@ -166,12 +164,10 @@ export function PenTools({
 }
 
 export function NoteBox({ board }: { board: Board }) {
-  const note = board.s.forms[board.key]?.note ?? ''
+  const note = board.s.forms[formKey(board.s.rot, 'recv')]?.note ?? ''
   return (
     <label className="flex min-h-0 flex-1 flex-col gap-1">
-      <span className="label">
-        备注 · 轮转{board.s.rot + 1} {TYPE_LABEL[board.type]}
-      </span>
+      <span className="label">备注 · 轮转{board.s.rot + 1}</span>
       <textarea
         className="field min-h-16 flex-1 resize-none py-1.5 leading-snug"
         value={note}
