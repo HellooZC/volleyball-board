@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+/* 配色：经典室内排球场（橙色场地 + 蓝色无障碍区），界面用冷灰白；深色模式跟随系统 */
+:root {
+  --bg: #eef2f7;
+  --panel: #ffffff;
+  --ink: #0f172a;
+  --mute: #64748b;
+  --line: #dbe2ea;
+  --btn: #f1f5f9;
+  --accent: #2563eb;
+  --accent-ink: #ffffff;
+  --win: #059669;
+  --lose: #e11d48;
+  --court-free: #2f6db5;
+  --court-opp: #d9925e;
+  --court-me: #e47b36;
+  --court-line: #ffffff;
+  --net: #0f172a;
+  --opp-tok: #475569;
+  --badge: #0f172a;
+  --tag-bg: rgba(255, 255, 255, 0.95);
+  --tag-ink: #0f172a;
+  --r-OH: #2563eb;
+  --r-OP: #0e7490;
+  --r-S: #7c3aed;
+  --r-MB: #15803d;
+  --r-L: #facc15;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1220;
+    --panel: #121b2c;
+    --ink: #e2e8f0;
+    --mute: #94a3b8;
+    --line: #223049;
+    --btn: #1a2539;
+    --accent: #60a5fa;
+    --accent-ink: #0b1220;
+    --win: #10b981;
+    --lose: #f43f5e;
+    --court-free: #1b3f6e;
+    --court-opp: #94603d;
+    --court-me: #b8642c;
+    --court-line: #f1f5f9;
+    --net: #020617;
+    --opp-tok: #64748b;
+    --badge: #020617;
+    --tag-bg: rgba(15, 23, 42, 0.92);
+    --tag-ink: #f1f5f9;
+    --r-OH: #3b82f6;
+    --r-OP: #0891b2;
+    --r-S: #8b5cf6;
+    --r-MB: #16a34a;
+    --r-L: #facc15;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-ink: var(--ink);
+  --color-mute: var(--mute);
+  --color-line: var(--line);
+  --color-btn: var(--btn);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-win: var(--win);
+  --color-lose: var(--lose);
+  --font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+}
+
+@theme {
+  --animate-rise: rise 0.35s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  --animate-fade: fade 0.2s ease-out both;
+  --animate-slide-in: slide-in 0.3s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  @keyframes slide-in {
+    from { transform: translateX(100%); }
+    to { transform: none; }
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow: hidden; /* 整页不滚动，面板内部自己滚 */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex min-h-10 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-line bg-btn px-3 text-sm font-medium text-ink transition duration-150 select-none
+      hover:brightness-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100
+      focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent;
+  }
+  .btn[aria-pressed="true"],
+  .btn-primary {
+    @apply border-accent bg-accent text-accent-ink;
+  }
+  .field {
+    @apply min-h-10 w-full min-w-0 rounded-lg border border-line bg-bg px-2 text-base text-ink lg:text-sm
+      focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent;
+  }
+  .card {
+    @apply rounded-xl border border-line bg-panel;
+  }
+  .label {
+    @apply text-xs font-medium text-mute;
+  }
+}
+
+/* 球场上可拖动的圆圈 */
+.tok {
+  cursor: grab;
+  transition: transform 0.45s cubic-bezier(0.3, 0.7, 0.3, 1);
+}
+.tok.dragging {
+  cursor: grabbing;
+  transition: none;
+}
+.pen .tok {
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
