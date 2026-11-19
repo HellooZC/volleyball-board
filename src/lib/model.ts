@@ -69,7 +69,7 @@ export interface Team {
   libero: string | null
   nextId: number
   /**
-   * 这支队 6 个轮转的接发球阵型（站位、画线、备注），key 是 `${轮转}-recv`。
+   * 这支队 6 个轮转的阵型（站位、画线、备注）：`${轮转}-recv` 接发球、`${轮转}-def` 我方发球。
    * 对局直接读写这里，所以改一次，每场比赛都用最新的。
    */
   forms: Record<string, Form>
@@ -97,7 +97,7 @@ export interface DB {
 export const ROLES: Record<Role, string> = { OH: '大炮', OP: '举对', S: '举球', MB: '拦中', L: '自由人' }
 export const ROLE_ORDER: Role[] = ['S', 'OH', 'OP', 'MB', 'L']
 export const POSN: Record<number, string> = { 1: '右后', 2: '右前', 3: '中前', 4: '左前', 5: '左后', 6: '中后' }
-/** recv：对方发球、我方接发球（存成队伍阵型）；def：我方发球（默认站位，临时调整不保存） */
+/** recv：对方发球、我方接发球；def：我方发球。两种都存成队伍阵型，每个轮转各一个 */
 export const TYPE_LABEL: Record<FormType, string> = { recv: '接发球', def: '我方发球' }
 
 export const DEF_POS: Record<FormType, Record<number, XY>> = {
@@ -267,7 +267,7 @@ export function migrateBoard(s: BoardState): DB {
   team.lineup = [...s.lineup]
   team.libero = s.libero
   team.nextId = s.nextId
-  team.forms = recvOnly(s.forms)
+  team.forms = structuredClone(s.forms)
   const matches: Match[] = []
   if (s.my || s.opp || s.log.length) {
     const m = newMatch(team, '对手')
@@ -292,24 +292,17 @@ export function adoptDB(o: unknown): DB | null {
   return s ? migrateBoard(s) : null
 }
 
-/** 只留接发球阵型（旧版还有防守站位，现在不存了） */
-export function recvOnly(forms: Record<string, Form> | undefined): Record<string, Form> {
-  const out: Record<string, Form> = {}
-  for (const [k, f] of Object.entries(forms ?? {})) if (k.endsWith('-recv')) out[k] = structuredClone(f)
-  return out
-}
-
-/** 旧版队伍有多套模板（templates），改成一支队一套：取第一套的接发球阵型 */
+/** 旧版队伍有多套模板（templates），改成一支队一套：取第一套 */
 export function normalizeTeam(t: Team): Team {
   const old = t as Team & { templates?: { forms: Record<string, Form> }[] }
   if (old.forms && !old.templates) return t
   const { templates, ...rest } = old
-  return { ...rest, forms: old.forms ?? recvOnly(templates?.[0]?.forms) }
+  return { ...rest, forms: old.forms ?? structuredClone(templates?.[0]?.forms ?? {}) }
 }
 
-/** 6 个轮转里摆好几个接发球阵型 */
-export function formCount(forms: Record<string, Form>) {
+/** 6 个轮转里摆好几个阵型（接发球或我方发球） */
+export function formCount(forms: Record<string, Form>, type: FormType = 'recv') {
   let n = 0
-  for (let r = 0; r < 6; r++) if (Object.keys(forms[`${r}-recv`]?.pos ?? {}).length) n++
+  for (let r = 0; r < 6; r++) if (Object.keys(forms[`${r}-${type}`]?.pos ?? {}).length) n++
   return n
 }

@@ -97,7 +97,7 @@ export function Court({ board, view, pen, penColor, selected, onTapPlayer }: Pro
     let ny = y + d.dy
     if (d.kind === 'pl') {
       nx = clamp(nx, 20, 340)
-      ny = clamp(ny, 360, 664)
+      ny = clamp(ny, 360, 684) // 可以站到底线后面（发球）
     } else if (d.kind === 'opp') {
       nx = clamp(nx, 20, 340)
       ny = clamp(ny, 36, 340)

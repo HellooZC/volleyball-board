@@ -17,7 +17,7 @@ export function MatchPage({ id }: { id: string }) {
   return <MatchBoard key={id} m={m} team={db.teams.find((t) => t.id === m.teamId)} />
 }
 
-/** 对局画面：比分、换人等记在对局里；接发球阵型直接读写队伍的（队伍被删掉时才用对局自己的备份） */
+/** 对局画面：比分、换人等记在对局里；阵型（接发球 / 我方发球）直接读写队伍的（队伍被删掉时才用对局自己的备份） */
 function MatchBoard({ m, team }: { m: Match; team: Team | undefined }) {
   const s = useMemo<BoardState>(() => (team ? { ...m, forms: team.forms } : m), [m, team])
   const update = useCallback(
@@ -54,7 +54,7 @@ function MatchBoard({ m, team }: { m: Match; team: Team | undefined }) {
 
   const formTools = team ? (
     <p className="text-xs leading-snug text-mute">
-      接发球阵型存在「{team.name}」，在这里拖动也会改到队伍，下一场一样用。
+      阵型存在「{team.name}」，在这里拖动也会改到队伍，下一场一样用。
       <button className="ml-1 cursor-pointer text-accent underline-offset-2 hover:underline" onClick={() => go.team(team.id)}>
         到队伍页
       </button>

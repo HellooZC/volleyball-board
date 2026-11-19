@@ -62,7 +62,7 @@ export function Home() {
         </button>
       }
     >
-      <p className="-mt-1 mb-2 text-xs text-mute">每支队有 6 个轮转的接发球阵型；对局直接用队伍的阵型，改一次每场都用最新的。</p>
+      <p className="-mt-1 mb-2 text-xs text-mute">每支队有 6 个轮转的接发球和我方发球阵型；对局直接用队伍的阵型，改一次每场都用最新的。</p>
       <ul className="flex flex-col gap-2">
         {db.teams.map((t, i) => (
           <TeamItem key={t.id} t={t} i={i} canDelete={db.teams.length > 1} />
@@ -192,7 +192,19 @@ function MatchItem({ m, i }: { m: Match; i: number }) {
 }
 
 function TeamItem({ t, i, canDelete }: { t: Team; i: number; canDelete: boolean }) {
-  const n = formCount(t.forms)
+  const nr = formCount(t.forms, 'recv')
+  const nd = formCount(t.forms, 'def')
+  const bars = (type: 'recv' | 'def', label: string) => (
+    <span className="flex items-center gap-1" aria-hidden="true">
+      <span className="w-12 text-[10px] text-mute">{label}</span>
+      {[0, 1, 2, 3, 4, 5].map((k) => (
+        <i
+          key={k}
+          className={'block h-1.5 w-3.5 rounded-full ' + (Object.keys(t.forms[`${k}-${type}`]?.pos ?? {}).length ? 'bg-win' : 'bg-line')}
+        />
+      ))}
+    </span>
+  )
   return (
     <li className="animate-rise" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
       <div className="flex items-center gap-2 rounded-xl border border-line bg-bg p-3">
@@ -200,16 +212,12 @@ function TeamItem({ t, i, canDelete }: { t: Team; i: number; canDelete: boolean 
         <div className="min-w-0 flex-1">
           <p className="truncate font-bold">{t.name}</p>
           <p className="text-xs text-mute">
-            {t.roster.length} 名球员 · 接发球阵型 <span className={n === 6 ? 'text-win' : ''}>已摆 {n}/6</span>
+            {t.roster.length} 名球员 · 接发球 {nr}/6 · 我方发球 {nd}/6
           </p>
-          {/* 6 个轮转的进度点 */}
-          <span className="mt-1 flex gap-1" aria-hidden="true">
-            {[0, 1, 2, 3, 4, 5].map((k) => (
-              <i
-                key={k}
-                className={'block h-1.5 w-4 rounded-full ' + (Object.keys(t.forms[`${k}-recv`]?.pos ?? {}).length ? 'bg-win' : 'bg-line')}
-              />
-            ))}
+          {/* 6 个轮转的进度：上排接发球、下排我方发球 */}
+          <span className="mt-1 flex flex-col gap-0.5">
+            {bars('recv', '接发球')}
+            {bars('def', '我方发球')}
           </span>
         </div>
         <button className="btn" onClick={() => go.team(t.id)}>
@@ -233,7 +241,8 @@ function TeamItem({ t, i, canDelete }: { t: Team; i: number; canDelete: boolean 
 function NewMatchDialog({ open, onClose, teams }: { open: boolean; onClose: () => void; teams: Team[] }) {
   const [teamId, setTeamId] = useState('')
   const team = teams.find((t) => t.id === teamId) ?? teams[0] ?? null
-  const n = team ? formCount(team.forms) : 0
+  const nr = team ? formCount(team.forms, 'recv') : 0
+  const nd = team ? formCount(team.forms, 'def') : 0
 
   return (
     <Modal open={open} onClose={onClose} title="新对局">
@@ -253,7 +262,7 @@ function NewMatchDialog({ open, onClose, teams }: { open: boolean; onClose: () =
           label="我方队伍"
           hint={
             team
-              ? `会带入名单和首发；接发球阵型直接用这支队的（已摆 ${n}/6${n < 6 ? '，没摆的轮转用默认站位' : ''}）。`
+              ? `会带入名单和首发；阵型直接用这支队的（接发球 ${nr}/6、我方发球 ${nd}/6${nr + nd < 12 ? '，没摆的用默认站位' : ''}）。`
               : undefined
           }
         >
@@ -301,7 +310,7 @@ function NewTeamDialog({ open, onClose }: { open: boolean; onClose: () => void }
           go.team(t.id)
         }}
       >
-        <Field label="队名" hint="建好后会进入阵型编辑：改名单，摆 6 个轮转的接发球阵型。">
+        <Field label="队名" hint="建好后会进入阵型编辑：改名单，摆 6 个轮转的接发球 / 我方发球阵型。">
           <input name="name" className="field" placeholder="例如：男排校队" maxLength={20} autoFocus required />
         </Field>
         <div className="flex justify-end gap-2">

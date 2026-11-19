@@ -141,7 +141,7 @@ export function BoardScreen({ board, renderHeader, tabs, logExtra, formTools }: 
           轮转 {board.s.rot + 1} · {TYPE_LABEL[board.type]}
         </span>
         <span className="rounded-full bg-panel/85 px-2.5 py-1 text-xs text-mute">
-          {board.temp ? '默认站位 · 临时调整不保存' : custom ? '已摆阵型' : '还没摆，显示默认站位'}
+          {custom ? '已摆阵型' : '还没摆，显示默认站位'}
         </span>
         {pen && <span className="animate-fade rounded-full bg-accent px-2.5 py-1 text-xs font-bold text-accent-ink">画笔中</span>}
         {board.mode === 'match' && (
@@ -195,8 +195,8 @@ export function BoardScreen({ board, renderHeader, tabs, logExtra, formTools }: 
     </main>
   )
 
-  // 只有对局需要切“接发球 / 我方发球”；队伍页只摆接发球阵型
-  const typeToggle = board.mode === 'match' ? <TypeToggle board={board} /> : null
+  // 切“接发球 / 我方发球”：对局会照发球方自动切，也可以手动切过去看
+  const typeToggle = <TypeToggle board={board} />
   const penTools = <PenTools board={board} pen={pen} setPen={setPen} color={penColor} setColor={setPenColor} />
   const sheetEl = sheet && (
     <Sheet side={layout === 'land' ? 'right' : 'bottom'} onClose={() => setSheet(false)}>
@@ -261,7 +261,7 @@ export function BoardScreen({ board, renderHeader, tabs, logExtra, formTools }: 
             <Section title="轮转">
               <RotationPicker board={board} />
             </Section>
-            <Section title={board.mode === 'match' ? '站位' : '接发球阵型'}>
+            <Section title={board.mode === 'match' ? '站位' : '阵型'}>
               {typeToggle}
               <ViewToggle view={view} onChange={setView} />
               <PosTools board={board} />

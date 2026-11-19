@@ -96,7 +96,7 @@ function pristine(d: DB) {
   return (
     d.matches.length === 0 &&
     d.teams.length <= 1 &&
-    d.teams.every((t) => t.name === '我的球队' && formCount(t.forms ?? {}) === 0)
+    d.teams.every((t) => t.name === '我的球队' && formCount(t.forms ?? {}) + formCount(t.forms ?? {}, 'def') === 0)
   )
 }
 
