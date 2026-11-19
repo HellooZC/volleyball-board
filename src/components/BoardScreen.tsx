@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { isCustom, PEN_COLORS, TYPE_LABEL } from '../lib/model'
 import type { Board } from '../lib/useBoard'
-import { NoteBox, PenTools, PosTools, RotationPicker, TypeToggle, ViewToggle } from './Controls'
+import { AttackerPicker, NoteBox, PenTools, PosTools, RotationPicker, TypeToggle, ViewToggle } from './Controls'
 import { Court, type CourtView } from './Court'
 import { HelpDialog } from './HelpDialog'
 import { Icon } from './Icons'
@@ -139,6 +139,7 @@ export function BoardScreen({ board, renderHeader, tabs, logExtra, formTools }: 
       <div className="pointer-events-none absolute top-2.5 left-2.5 flex flex-wrap gap-1.5">
         <span className="rounded-full bg-ink/80 px-2.5 py-1 text-xs font-bold text-bg">
           轮转 {board.s.rot + 1} · {TYPE_LABEL[board.type]}
+          {board.type === 'atk' && ` · 对方${board.atk}号位进攻`}
         </span>
         <span className="rounded-full bg-panel/85 px-2.5 py-1 text-xs text-mute">
           {custom ? '已摆阵型' : '还没摆，显示默认站位'}
@@ -208,6 +209,7 @@ export function BoardScreen({ board, renderHeader, tabs, logExtra, formTools }: 
         setTab={setTab}
         tools={
           <div className="flex flex-col gap-3">
+            <AttackerPicker board={board} />
             <ViewToggle view={view} onChange={setView} />
             <PosTools board={board} />
             {formTools}
@@ -243,6 +245,7 @@ export function BoardScreen({ board, renderHeader, tabs, logExtra, formTools }: 
         <nav className="card flex max-h-full min-h-0 flex-col gap-2 self-start overflow-y-auto p-2" aria-label="轮转和工具">
           <RotationPicker board={board} />
           {typeToggle}
+          <AttackerPicker board={board} hint={false} />
           <div className="grid grid-cols-2 gap-1.5 [&>button]:px-1">{quickTools}</div>
         </nav>
         {sheetEl}
@@ -263,12 +266,13 @@ export function BoardScreen({ board, renderHeader, tabs, logExtra, formTools }: 
             </Section>
             <Section title={board.mode === 'match' ? '站位' : '阵型'}>
               {typeToggle}
+              <AttackerPicker board={board} hint={false} />
               <ViewToggle view={view} onChange={setView} />
               <PosTools board={board} />
               {formTools}
             </Section>
             <Section title="画跑位">{penTools}</Section>
-            <div className="card flex min-h-32 flex-1 flex-col p-2.5">
+            <div className="card flex min-h-28 flex-1 flex-col p-2.5">
               <NoteBox board={board} />
             </div>
           </aside>

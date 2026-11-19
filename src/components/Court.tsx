@@ -74,7 +74,7 @@ export function Court({ board, view, pen, penColor, selected, onTapPlayer }: Pro
     const kind = g.dataset.kind as DragKind
     const ref = Number(g.dataset.ref)
     const base: XY =
-      kind === 'pl' ? posOf(s, type, ref) : kind === 'opp' ? (s.oppPos[ref] ?? OPP_DEF[ref]) : s.ball
+      kind === 'pl' ? posOf(s, board.key, type, ref) : kind === 'opp' ? (s.oppPos[ref] ?? OPP_DEF[ref]) : s.ball
     drag.current = { kind, ref, dx: base[0] - x, dy: base[1] - y, sx: x, sy: y, moved: false }
     capture(e)
     e.preventDefault()
@@ -123,7 +123,10 @@ export function Court({ board, view, pen, penColor, selected, onTapPlayer }: Pro
       else if (d.kind === 'opp') board.moveOpp(d.ref, dragXY.xy)
       else board.moveBall(dragXY.xy)
     } else if (!d.moved && d.kind === 'pl') {
-      onTapPlayer(d.ref, toScreen(posOf(s, type, d.ref)))
+      onTapPlayer(d.ref, toScreen(posOf(s, board.key, type, d.ref)))
+    } else if (!d.moved && d.kind === 'opp') {
+      // 点对方球员 = 选“对方从这个号位进攻”，切到防守阵型
+      board.pickAttacker(d.ref + 1)
     }
     setDragXY(null)
   }
@@ -181,6 +184,15 @@ export function Court({ board, view, pen, penColor, selected, onTapPlayer }: Pro
               xy={xyFor('opp', p - 1, s.oppPos[p - 1] ?? OPP_DEF[p - 1])}
               dragging={dragXY?.kind === 'opp' && dragXY.ref === p - 1}
             >
+              {type === 'atk' && board.atk === p && (
+                <>
+                  <circle r={23} fill="none" stroke="var(--lose)" strokeWidth={3.5} />
+                  <rect x={-17} y={20} width={34} height={15} rx={7.5} fill="var(--lose)" />
+                  <text y={27.5} fontSize={10} fontWeight={700} fill="#fff" textAnchor="middle" dominantBaseline="central" pointerEvents="none">
+                    进攻
+                  </text>
+                </>
+              )}
               <circle r={16} fill="var(--opp-tok)" stroke="#fff" strokeWidth={2} strokeOpacity={0.8} />
               <text fontSize={13} fill="#fff" textAnchor="middle" dominantBaseline="central" fontWeight={700} pointerEvents="none">
                 {i + 1}
@@ -200,7 +212,7 @@ export function Court({ board, view, pen, penColor, selected, onTapPlayer }: Pro
             key={o.pl.id}
             kind="pl"
             refNo={o.p}
-            xy={xyFor('pl', o.p, posOf(s, type, o.p))}
+            xy={xyFor('pl', o.p, posOf(s, board.key, type, o.p))}
             dragging={dragXY?.kind === 'pl' && dragXY.ref === o.p}
           >
             <PlayerMark o={o} selected={selected === o.p} />

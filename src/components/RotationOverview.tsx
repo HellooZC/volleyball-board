@@ -1,5 +1,5 @@
 import { DEF_POS, formKey, isCustom, onCourt, TYPE_LABEL, type BoardState, type FormType } from '../lib/model'
-import { TypeToggle } from './Controls'
+import { AttackerPicker, TypeToggle } from './Controls'
 import type { Board } from '../lib/useBoard'
 
 /** 六个轮转一览：每个轮转的阵型（接发球或我方发球）画成小球场，点一个就切过去 */
@@ -8,7 +8,10 @@ export function RotationOverview({ board }: { board: Board }) {
   return (
     <div className="flex flex-col gap-2">
       <TypeToggle board={board} />
-      <p className="text-xs text-mute">6 个轮转的{TYPE_LABEL[type]}阵型。点一个切过去编辑；没摆的轮转显示默认站位。</p>
+      <AttackerPicker board={board} />
+      <p className="text-xs text-mute">
+        6 个轮转的{TYPE_LABEL[type]}阵型{type === 'atk' ? `（对方 ${board.atk} 号位进攻）` : ''}。点一个切过去编辑；没摆的显示默认站位。
+      </p>
       <div className="grid grid-cols-3 gap-2">
         {[0, 1, 2, 3, 4, 5].map((k) => (
           <MiniCourt
@@ -16,6 +19,7 @@ export function RotationOverview({ board }: { board: Board }) {
             s={s}
             rot={k}
             type={type}
+            atk={board.atk}
             active={k === s.rot}
             onClick={() => board.setRot(k)}
           />
@@ -29,16 +33,18 @@ function MiniCourt({
   s,
   rot,
   type,
+  atk,
   active,
   onClick,
 }: {
   s: BoardState
   rot: number
   type: FormType
+  atk: number
   active: boolean
   onClick: () => void
 }) {
-  const key = formKey(rot, type)
+  const key = formKey(rot, type, atk)
   const note = s.forms[formKey(rot, 'recv')]?.note
   const form = s.forms[key]
   const custom = isCustom(s, key)

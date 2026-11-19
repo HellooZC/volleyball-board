@@ -84,6 +84,7 @@ function TeamBar({ variant, team, onHelp }: { variant: HeaderVariant; team: Team
   const [rename, setRename] = useState(false)
   const nr = formCount(team.forms, 'recv')
   const nd = formCount(team.forms, 'def')
+  const na = formCount(team.forms, 'atk')
 
   const title = (
     <button
@@ -93,7 +94,7 @@ function TeamBar({ variant, team, onHelp }: { variant: HeaderVariant; team: Team
     >
       <p className="truncate text-sm font-bold">{team.name}</p>
       <p className="truncate text-xs text-mute">
-        接发球 {nr}/6 · 我方发球 {nd}/6{variant === 'bar' ? ' · 拖完自动保存' : ''}
+        接发球 {nr}/6 · 我方发球 {nd}/6 · 防守 {na}/36{variant === 'bar' ? ' · 拖完自动保存' : ''}
       </p>
     </button>
   )
@@ -117,7 +118,7 @@ function TeamBar({ variant, team, onHelp }: { variant: HeaderVariant; team: Team
       onSave={(v) => store.updateTeam(team.id, (t) => void (t.name = v))}
     />
   )
-  const tip = <p className="text-xs leading-snug text-mute">每个轮转摆接发球和我方发球两个阵型；对局里会照发球方自动摆出当前轮转的阵型。</p>
+  const tip = <p className="text-xs leading-snug text-mute">每个轮转摆接发球、我方发球，和防守（点对方球员选进攻号位）阵型；对局会照发球方自动切换。</p>
 
   if (variant === 'stack') {
     return (

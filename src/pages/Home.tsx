@@ -6,7 +6,7 @@ import { Ball, Icon } from '../components/Icons'
 import { Field, Modal } from '../components/Modal'
 import { Toast } from '../components/Toast'
 import { useToast } from '../lib/useToast'
-import { adoptDB, formCount, newMatch, newTeam, setScore, today, type DB, type Match, type Team } from '../lib/model'
+import { adoptDB, atkCountOf, formCount, newMatch, newTeam, setScore, today, type DB, type Match, type Team } from '../lib/model'
 import { go } from '../lib/router'
 import { useCloud } from '../lib/cloud'
 import { getDB, store, useDB } from '../lib/store'
@@ -62,7 +62,7 @@ export function Home() {
         </button>
       }
     >
-      <p className="-mt-1 mb-2 text-xs text-mute">每支队有 6 个轮转的接发球和我方发球阵型；对局直接用队伍的阵型，改一次每场都用最新的。</p>
+      <p className="-mt-1 mb-2 text-xs text-mute">每支队每个轮转有接发球、我方发球和防守阵型；对局直接用队伍的阵型，改一次每场都用最新的。</p>
       <ul className="flex flex-col gap-2">
         {db.teams.map((t, i) => (
           <TeamItem key={t.id} t={t} i={i} canDelete={db.teams.length > 1} />
@@ -194,6 +194,7 @@ function MatchItem({ m, i }: { m: Match; i: number }) {
 function TeamItem({ t, i, canDelete }: { t: Team; i: number; canDelete: boolean }) {
   const nr = formCount(t.forms, 'recv')
   const nd = formCount(t.forms, 'def')
+  const na = formCount(t.forms, 'atk')
   const bars = (type: 'recv' | 'def', label: string) => (
     <span className="flex items-center gap-1" aria-hidden="true">
       <span className="w-12 text-[10px] text-mute">{label}</span>
@@ -212,12 +213,24 @@ function TeamItem({ t, i, canDelete }: { t: Team; i: number; canDelete: boolean 
         <div className="min-w-0 flex-1">
           <p className="truncate font-bold">{t.name}</p>
           <p className="text-xs text-mute">
-            {t.roster.length} 名球员 · 接发球 {nr}/6 · 我方发球 {nd}/6
+            {t.roster.length} 名球员 · 接发球 {nr}/6 · 我方发球 {nd}/6 · 防守 {na}/36
           </p>
           {/* 6 个轮转的进度：上排接发球、下排我方发球 */}
           <span className="mt-1 flex flex-col gap-0.5">
             {bars('recv', '接发球')}
             {bars('def', '我方发球')}
+            {/* 防守：每个轮转 6 个号位，摆满才算满格 */}
+            <span className="flex items-center gap-1" aria-hidden="true">
+              <span className="w-12 text-[10px] text-mute">防守</span>
+              {[0, 1, 2, 3, 4, 5].map((k) => {
+                const n = atkCountOf(t.forms, k)
+                return (
+                  <i key={k} className="block h-1.5 w-3.5 overflow-hidden rounded-full bg-line">
+                    <i className="block h-full bg-win" style={{ width: `${(n / 6) * 100}%` }} />
+                  </i>
+                )
+              })}
+            </span>
           </span>
         </div>
         <button className="btn" onClick={() => go.team(t.id)}>
@@ -310,7 +323,7 @@ function NewTeamDialog({ open, onClose }: { open: boolean; onClose: () => void }
           go.team(t.id)
         }}
       >
-        <Field label="队名" hint="建好后会进入阵型编辑：改名单，摆 6 个轮转的接发球 / 我方发球阵型。">
+        <Field label="队名" hint="建好后会进入阵型编辑：改名单，摆 6 个轮转的接发球 / 我方发球 / 防守阵型。">
           <input name="name" className="field" placeholder="例如：男排校队" maxLength={20} autoFocus required />
         </Field>
         <div className="flex justify-end gap-2">

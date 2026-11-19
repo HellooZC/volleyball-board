@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { formCount, normalizeTeam, type DB, type Match, type Team } from './model'
+import { hasForms, normalizeTeam, type DB, type Match, type Team } from './model'
 import { getDB, onLocalCommit, store } from './store'
 
 /**
@@ -96,7 +96,7 @@ function pristine(d: DB) {
   return (
     d.matches.length === 0 &&
     d.teams.length <= 1 &&
-    d.teams.every((t) => t.name === '我的球队' && formCount(t.forms ?? {}) + formCount(t.forms ?? {}, 'def') === 0)
+    d.teams.every((t) => t.name === '我的球队' && !hasForms(t.forms))
   )
 }
 

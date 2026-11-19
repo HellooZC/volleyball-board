@@ -27,7 +27,9 @@ export function useBoard(base: BoardState, update: BoardUpdate, mode: 'match' | 
   const pushHist = (k: string, pos: Form['pos']) =>
     setMoveHist((h) => ({ ...h, [k]: [...(h[k] ?? []), structuredClone(pos)] }))
 
-  const key = formKey(base.rot, type)
+  /** 防守阵型：对方从几号位进攻（1–6） */
+  const [atk, setAtk] = useState(4)
+  const key = formKey(base.rot, type, atk)
   const s = base
 
   const actions = useMemo(() => {
@@ -36,6 +38,12 @@ export function useBoard(base: BoardState, update: BoardUpdate, mode: 'match' | 
     return {
       setRot: (rot: number) => update((d) => void (d.rot = rot)),
       setType,
+      setAtk,
+      /** 点对方球员：切到“防守 · 对方从这个号位进攻” */
+      pickAttacker: (p: number) => {
+        setAtk(p)
+        setType('atk')
+      },
 
       /** 我方得分 / 对方得分；对方发球时我方得分要轮转 */
       point: (won: boolean) => {
@@ -136,6 +144,7 @@ export function useBoard(base: BoardState, update: BoardUpdate, mode: 'match' | 
     mode,
     type,
     key,
+    atk,
     status,
     canUndoMove: !!moveHist[key]?.length,
     update,

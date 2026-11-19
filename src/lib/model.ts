@@ -1,5 +1,6 @@
 export type Role = 'OH' | 'OP' | 'S' | 'MB' | 'L'
-export type FormType = 'recv' | 'def'
+/** recv 接发球、def 我方发球、atk 防守（对方某个号位进攻时） */
+export type FormType = 'recv' | 'def' | 'atk'
 export type XY = [number, number]
 
 export interface Player {
@@ -97,13 +98,21 @@ export interface DB {
 export const ROLES: Record<Role, string> = { OH: '大炮', OP: '举对', S: '举球', MB: '拦中', L: '自由人' }
 export const ROLE_ORDER: Role[] = ['S', 'OH', 'OP', 'MB', 'L']
 export const POSN: Record<number, string> = { 1: '右后', 2: '右前', 3: '中前', 4: '左前', 5: '左后', 6: '中后' }
-/** recv：对方发球、我方接发球；def：我方发球。两种都存成队伍阵型，每个轮转各一个 */
-export const TYPE_LABEL: Record<FormType, string> = { recv: '接发球', def: '我方发球' }
+/**
+ * recv：对方发球、我方接发球；def：我方发球；atk：防守（对方从某个号位进攻）。
+ * 全部存成队伍阵型：接发球 / 我方发球每个轮转各一个；防守每个轮转 6 个（对方 1–6 号位），
+ * 不分谁发球，同一个轮转共用。
+ */
+export const TYPE_LABEL: Record<FormType, string> = { recv: '接发球', def: '我方发球', atk: '防守' }
 
 export const DEF_POS: Record<FormType, Record<number, XY>> = {
   recv: { 1: [285, 575], 2: [285, 425], 3: [180, 425], 4: [75, 425], 5: [75, 575], 6: [180, 595] },
   def: { 1: [285, 625], 2: [285, 395], 3: [180, 395], 4: [75, 395], 5: [75, 625], 6: [180, 640] },
+  // 防守的默认：前排靠网准备拦网，后排在底线附近
+  atk: { 1: [285, 610], 2: [285, 385], 3: [180, 385], 4: [75, 385], 5: [75, 610], 6: [180, 630] },
 }
+/** 防守阵型选对方几号位进攻时的按钮排法：照我们看过去的样子（上排对方后排 1 6 5，下排前排 2 3 4） */
+export const ATK_GRID = [1, 6, 5, 2, 3, 4]
 /** 旧版对手默认位置（只用来辨认旧资料） */
 const OPP0: XY[] = [[180, 60], [60, 140], [300, 140], [75, 300], [180, 310], [285, 300]]
 /** 对方 1–6 号位的默认坐标：我方接发球站位隔着网镜射过去（对方的右边是我们看过去的左边） */
@@ -154,7 +163,8 @@ export function adopt(o: unknown): BoardState | null {
   return out
 }
 
-export const formKey = (rot: number, type: FormType) => `${rot}-${type}`
+/** 阵型的 key：`轮转-recv`、`轮转-def`、`轮转-atk号位` */
+export const formKey = (rot: number, type: FormType, atk = 4) => (type === 'atk' ? `${rot}-atk${atk}` : `${rot}-${type}`)
 export const slotOf = (s: BoardState, p: number) => (p - 1 + s.rot) % 6
 export const byId = (s: BoardState, id: string | null) => s.roster.find((p) => p.id === id)
 export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
@@ -188,8 +198,9 @@ export function onCourt(s: BoardState): CourtPlayer[] {
   return out
 }
 
-export function posOf(s: BoardState, type: FormType, p: number): XY {
-  return s.forms[formKey(s.rot, type)]?.pos?.[p] ?? DEF_POS[type][p]
+/** 某个阵型（key）里 p 号位球员的坐标；没摆过就用这种阵型的默认站位 */
+export function posOf(s: BoardState, key: string, type: FormType, p: number): XY {
+  return s.forms[key]?.pos?.[p] ?? DEF_POS[type][p]
 }
 
 export function isCustom(s: BoardState, key: string) {
@@ -300,9 +311,21 @@ export function normalizeTeam(t: Team): Team {
   return { ...rest, forms: old.forms ?? structuredClone(templates?.[0]?.forms ?? {}) }
 }
 
-/** 6 个轮转里摆好几个阵型（接发球或我方发球） */
+const placed = (f: Form | undefined) => Object.keys(f?.pos ?? {}).length > 0
+
+/** 摆好几个阵型：接发球 / 我方发球最多 6 个；防守最多 36 个（6 轮转 × 对方 6 个号位） */
 export function formCount(forms: Record<string, Form>, type: FormType = 'recv') {
   let n = 0
-  for (let r = 0; r < 6; r++) if (Object.keys(forms[`${r}-${type}`]?.pos ?? {}).length) n++
+  for (let r = 0; r < 6; r++) {
+    if (type === 'atk') for (let p = 1; p <= 6; p++) n += placed(forms[formKey(r, 'atk', p)]) ? 1 : 0
+    else if (placed(forms[formKey(r, type)])) n++
+  }
   return n
 }
+
+/** 这个轮转摆了几个防守阵型（0–6） */
+export const atkCountOf = (forms: Record<string, Form>, rot: number) =>
+  [1, 2, 3, 4, 5, 6].filter((p) => placed(forms[formKey(rot, 'atk', p)])).length
+
+/** 有没有摆过任何阵型 */
+export const hasForms = (forms: Record<string, Form> | undefined) => Object.values(forms ?? {}).some(placed)
